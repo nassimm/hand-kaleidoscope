@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Hand Kaleidoscope</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600&display=swap" rel="stylesheet">
+<style>
+  /* The stage is always black (needed for the screen blend), so both themes share these tokens. */
+  :root {
+    --stage: #000000;
+    --text: #f2edf9;
+    --muted: #a99fbb;
+    --accent: #cbb8ff;
+    --panel: rgba(28, 22, 38, 0.72);
+    --line: rgba(203, 184, 255, 0.22);
+    --font: "Bricolage Grotesque", ui-rounded, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color-scheme: dark;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --stage: #000000; --text: #f2edf9; --muted: #a99fbb; --accent: #cbb8ff;
+      --panel: rgba(28, 22, 38, 0.72); --line: rgba(203, 184, 255, 0.22);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --stage: #000000; --text: #f2edf9; --muted: #a99fbb; --accent: #cbb8ff;
+    --panel: rgba(28, 22, 38, 0.72); --line: rgba(203, 184, 255, 0.22);
+    color-scheme: dark;
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  html { height: 100%; scroll-padding-top: env(safe-area-inset-top, 0px); }
+  body {
+    height: 100%; margin: 0; overflow: hidden;
+    background: var(--stage); color: var(--text);
+    font-family: var(--font); -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation;
+  }
+  #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+  /* Start screen */
+  #start {
+    position: fixed; inset: 0; display: grid; place-items: center;
+    padding: calc(24px + env(safe-area-inset-top, 0px)) 28px calc(24px + env(safe-area-inset-bottom, 0px));
+    text-align: center;
+  }
+  #start[hidden] { display: none; }
+  .intro { max-width: 22rem; }
+  .intro h1 { font-size: 2.4rem; line-height: 1.05; font-weight: 600; margin: 0 0 0.75rem; letter-spacing: -0.02em; }
+  .intro p { color: var(--muted); font-size: 1rem; line-height: 1.5; margin: 0 0 1.75rem; }
+  .primary {
+    font: inherit; font-weight: 600; font-size: 1.05rem;
+    color: #1a1226; background: var(--accent);
+    border: 0; border-radius: 999px; padding: 0.95rem 2rem; cursor: pointer;
+  }
+  .primary:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+  #err { color: #ffb3c1; font-size: 0.95rem; line-height: 1.45; margin-top: 1.25rem; min-height: 1em; }
+
+  /* Controls */
+  #panel {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    padding: 14px 18px calc(16px + env(safe-area-inset-bottom, 0px));
+    background: var(--panel);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border-top: 1px solid var(--line);
+    transition: transform 0.25s ease;
+  }
+  #panel[hidden] { display: none; }
+  #panel.tucked { transform: translateY(110%); }
+  .inner { max-width: 30rem; margin: 0 auto; display: grid; gap: 12px; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; }
+  .seg button {
+    font: inherit; font-size: 0.92rem; color: var(--muted); background: transparent;
+    border: 0; border-radius: 9px; padding: 0.5rem; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: rgba(203, 184, 255, 0.18); color: var(--text); }
+  .row { display: grid; grid-template-columns: 5.2rem 1fr 1.8rem; align-items: center; gap: 10px; font-size: 0.92rem; }
+  .row span:last-child { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); }
+  #grab {
+    font: inherit; font-size: 0.92rem; color: var(--text); background: transparent;
+    border: 1px solid var(--line); border-radius: 12px; padding: 0.6rem; cursor: pointer;
+  }
+  #grab[hidden] { display: none; }
+  .hint { color: var(--muted); font-size: 0.8rem; text-align: center; margin: 0; }
+  @media (prefers-reduced-motion: reduce) { #panel { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="stage" aria-label="Kaleidoscope of your hands"></canvas>
+<video id="v" playsinline muted autoplay></video>
+
+<section id="start">
+  <div class="intro">
+    <h1>Hand Kaleidoscope</h1>
+    <p>Hold your hands in front of the selfie camera. Each copy trails a little behind the last. A dark background works best.</p>
+    <button class="primary" id="startBtn">Start camera</button>
+    <div id="err" role="alert"></div>
+  </div>
+</section>
+
+<div id="panel" hidden>
+  <div class="inner">
+    <div class="seg" role="group" aria-label="Background removal">
+      <button id="mBright" aria-pressed="true">Remove dark areas</button>
+      <button id="mBg" aria-pressed="false">Remove saved background</button>
+    </div>
+    <button id="grab" hidden>Save empty background</button>
+    <label class="row"><span>Copies</span><input id="copies" type="range" min="2" max="8" value="4"><span id="copiesV">8</span></label>
+    <label class="row"><span>Delay</span><input id="delay" type="range" min="0" max="8" value="3"><span id="delayV">3</span></label>
+    <label class="row"><span>Cutoff</span><input id="cutoff" type="range" min="0" max="200" value="80"><span id="cutoffV">80</span></label>
+    <p class="hint">Tap the picture to hide or show these controls.</p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const video = document.getElementById('v');
+  const stage = document.getElementById('stage');
+  const sctx = stage.getContext('2d');
+  const startScreen = document.getElementById('start');
+  const startBtn = document.getElementById('startBtn');
+  const errEl = document.getElementById('err');
+  const panel = document.getElementById('panel');
+  const ui = {
+    copies: document.getElementById('copies'),
+    delay: document.getElementById('delay'),
+    cutoff: document.getElementById('cutoff'),
+    copiesV: document.getElementById('copiesV'),
+    delayV: document.getElementById('delayV'),
+    cutoffV: document.getElementById('cutoffV'),
+    mBright: document.getElementById('mBright'),
+    mBg: document.getElementById('mBg'),
+    grab: document.getElementById('grab'),
+  };
+
+  const BUF = 72;            // frames of history (8 copies x 8 delay + margin)
+  const CAP_W = 240;         // processing width, small for speed
+  const SOFT = 1 / 40;       // edge softness of the key
+  let cw = 0, ch = 0, cap, capCtx;
+  let buf = [], bufCtx = [], head = 0, filled = 0;
+  let mode = 'bright', bgData = null, grabNext = false;
+
+  // ---- UI ----
+  const syncLabels = () => {
+    ui.copiesV.textContent = ui.copies.value * 2;
+    ui.delayV.textContent = ui.delay.value;
+    ui.cutoffV.textContent = ui.cutoff.value;
+  };
+  ['copies', 'delay', 'cutoff'].forEach(k => ui[k].addEventListener('input', syncLabels));
+  syncLabels();
+
+  const setMode = m => {
+    mode = m;
+    ui.mBright.setAttribute('aria-pressed', m === 'bright');
+    ui.mBg.setAttribute('aria-pressed', m === 'bg');
+    ui.grab.hidden = m !== 'bg';
+    ui.cutoff.value = m === 'bg' ? 30 : 80;
+    syncLabels();
+  };
+  ui.mBright.addEventListener('click', () => setMode('bright'));
+  ui.mBg.addEventListener('click', () => setMode('bg'));
+  ui.grab.addEventListener('click', () => {
+    ui.grab.textContent = 'Saving in 2 seconds, step out of frame…';
+    setTimeout(() => { grabNext = true; }, 2000);
+  });
+  stage.addEventListener('click', () => panel.classList.toggle('tucked'));
+
+  // ---- Camera ----
+  startBtn.addEventListener('click', async () => {
+    errEl.textContent = '';
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      errEl.textContent = 'This page can’t reach the camera here. Open it in its own Safari tab over HTTPS.';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      video.srcObject = stream;
+      await video.play();
+      if (!video.videoWidth) await new Promise(r => video.addEventListener('loadedmetadata', r, { once: true }));
+      setup();
+      startScreen.hidden = true;
+      panel.hidden = false;
+      requestAnimationFrame(loop);
+    } catch (e) {
+      errEl.textContent = e && e.name === 'NotAllowedError'
+        ? 'Camera access was blocked. Allow the camera for this site in Safari (aA menu › Website Settings), or open the page in its own tab, then try again.'
+        : 'The camera didn’t start (' + (e && e.name || 'unknown error') + '). Open the page in its own Safari tab and try again.';
+    }
+  });
+
+  function setup() {
+    cw = CAP_W;
+    ch = Math.round(cw * video.videoHeight / video.videoWidth);
+    cap = document.createElement('canvas');
+    cap.width = cw; cap.height = ch;
+    capCtx = cap.getContext('2d', { willReadFrequently: true });
+    buf = []; bufCtx = [];
+    for (let i = 0; i < BUF; i++) {
+      const c = document.createElement('canvas');
+      c.width = cw; c.height = ch;
+      buf.push(c); bufCtx.push(c.getContext('2d'));
+    }
+    resize();
+    addEventListener('resize', resize);
+  }
+
+  function resize() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    stage.width = Math.round(innerWidth * dpr);
+    stage.height = Math.round(innerHeight * dpr);
+  }
+
+  // ---- Per frame ----
+  function capture() {
+    // mirror like a selfie
+    capCtx.setTransform(-1, 0, 0, 1, cw, 0);
+    capCtx.drawImage(video, 0, 0, cw, ch);
+    capCtx.setTransform(1, 0, 0, 1, 0, 0);
+    const img = capCtx.getImageData(0, 0, cw, ch);
+    const d = img.data;
+
+    if (grabNext) {
+      bgData = new Uint8ClampedArray(d);
+      grabNext = false;
+      ui.grab.textContent = 'Retake background';
+    }
+
+    const cut = +ui.cutoff.value;
+    const useBg = mode === 'bg' && bgData;
+    for (let p = 0; p < d.length; p += 4) {
+      const r = d[p], g = d[p + 1], b = d[p + 2];
+      const v = useBg
+        ? (Math.abs(r - bgData[p]) + Math.abs(g - bgData[p + 1]) + Math.abs(b - bgData[p + 2])) / 3
+        : 0.299 * r + 0.587 * g + 0.114 * b;
+      const a = (v - cut) * SOFT;
+      if (a <= 0) { d[p] = d[p + 1] = d[p + 2] = 0; }
+      else if (a < 1) { d[p] = r * a; d[p + 1] = g * a; d[p + 2] = b * a; }
+    }
+
+    head = (head + 1) % BUF;
+    bufCtx[head].putImageData(img, 0, 0);
+    filled = Math.min(filled + 1, BUF);
+  }
+
+  function draw() {
+    const W = stage.width, H = stage.height, m = Math.min(W, H);
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.globalCompositeOperation = 'source-over';
+    sctx.fillStyle = '#000';
+    sctx.fillRect(0, 0, W, H);
+    sctx.globalCompositeOperation = 'screen';
+
+    const n = +ui.copies.value;        // copies per side
+    const step = +ui.delay.value;      // frames between copies
+    const R = m * 0.05;                // gap from the center
+    const sh = m * 0.43;               // copy height
+    const sw = sh * cw / ch;
+
+    for (const side of [1, -1]) {      // right half, then its mirror on the left
+      for (let i = 0; i < n; i++) {
+        const age = Math.min(i * step, filled - 1);
+        const f = buf[((head - age) % BUF + BUF) % BUF];
+        const a = Math.PI * (i + 0.5) / n;   // top → bottom around the right side
+        sctx.setTransform(side, 0, 0, 1, W / 2, H / 2);
+        sctx.rotate(a);
+        // wrists toward the center, fingers pointing outward
+        sctx.drawImage(f, -sw / 2, -R - sh, sw, sh);
+      }
+    }
+  }
+
+  function loop() {
+    if (video.readyState >= 2) { capture(); draw(); }
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>
