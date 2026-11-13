@@ -116,10 +116,10 @@
     <button id="grab" hidden>Save empty background</button>
     <label class="row"><span>Copies</span><input id="copies" type="range" min="2" max="8" value="4"><span id="copiesV">8</span></label>
     <label class="row"><span>Delay</span><input id="delay" type="range" min="0" max="500" step="10" value="100"><span id="delayV">100 ms</span></label>
-    <label class="row"><span>Rotate</span><input id="rotate" type="range" min="-180" max="180" value="0"><span id="rotateV">0°</span></label>
-    <label class="row"><span>Scale</span><input id="scale" type="range" min="30" max="200" value="100"><span id="scaleV">1.0×</span></label>
+    <label class="row"><span>Rotate</span><input id="rotate" type="range" min="-45" max="45" value="10"><span id="rotateV">+10°</span></label>
+    <label class="row"><span>Scale</span><input id="scale" type="range" min="75" max="130" value="105"><span id="scaleV">1.05×</span></label>
     <label class="row"><span>Cutoff</span><input id="cutoff" type="range" min="0" max="200" value="80"><span id="cutoffV">80</span></label>
-    <p class="hint">Tap the picture to hide or show these controls.</p>
+    <p class="hint">Delay, rotate and scale add up from one copy to the next. Tap the picture to hide or show these controls.</p>
   </div>
 </div>
 
@@ -163,8 +163,8 @@
     ui.copiesV.textContent = ui.copies.value * 2;
     ui.delayV.textContent = ui.delay.value + ' ms';
     ui.cutoffV.textContent = ui.cutoff.value;
-    ui.rotateV.textContent = ui.rotate.value + '°';
-    ui.scaleV.textContent = (ui.scale.value / 100).toFixed(1) + '×';
+    ui.rotateV.textContent = (ui.rotate.value > 0 ? '+' : '') + ui.rotate.value + '°';
+    ui.scaleV.textContent = (ui.scale.value / 100).toFixed(2) + '×';
   };
   ['copies', 'delay', 'cutoff', 'rotate', 'scale'].forEach(k => ui[k].addEventListener('input', syncLabels));
   syncLabels();
@@ -276,10 +276,10 @@
 
     const n = +ui.copies.value;                      // copies per side
     const delayMs = +ui.delay.value;                 // delay between copies
-    const rot = +ui.rotate.value * Math.PI / 180;    // each copy spins around its own center
-    const R = m * 0.05;                              // gap from the center
-    const sh = m * 0.43 * (+ui.scale.value / 100);   // copy height
-    const sw = sh * cw / ch;
+    const rotStep = +ui.rotate.value * Math.PI / 180;  // spin added per copy
+    const scaleStep = +ui.scale.value / 100;           // scale multiplied per copy
+    const R = m * 0.05;                                // gap from the center
+    const baseH = m * 0.43;                            // first copy's height
     const now = times[head];
 
     for (const side of [1, -1]) {      // right half, then its mirror on the left
@@ -289,8 +289,10 @@
         sctx.setTransform(side, 0, 0, 1, W / 2, H / 2);
         sctx.rotate(a);
         // wrists toward the center, fingers pointing outward
+        const sh = baseH * Math.pow(scaleStep, i);   // grows (or shrinks) copy by copy
+        const sw = sh * cw / ch;
         sctx.translate(0, -R - sh / 2);
-        sctx.rotate(rot);
+        sctx.rotate(rotStep * i);                     // spins a bit more copy by copy
         sctx.drawImage(f, -sw / 2, -sh / 2, sw, sh);
       }
     }
