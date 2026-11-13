@@ -267,7 +267,11 @@
   }
 
   function draw() {
-    const W = stage.width, H = stage.height, m = Math.min(W, H);
+    const W = stage.width, H = stage.height;
+    const k = W / innerWidth;                          // device pixels per CSS pixel
+    const covered = (!panel.hidden && !panel.classList.contains('tucked')) ? panel.offsetHeight * k : 0;
+    const cx = W / 2, cy = (H - covered) / 2;          // center of the free space above the controls
+    const m = Math.min(W, H - covered);
     sctx.setTransform(1, 0, 0, 1, 0, 0);
     sctx.globalCompositeOperation = 'source-over';
     sctx.fillStyle = '#000';
@@ -278,15 +282,25 @@
     const delayMs = +ui.delay.value;                 // delay between copies
     const rotStep = +ui.rotate.value * Math.PI / 180;  // spin added per copy
     const scaleStep = +ui.scale.value / 100;           // scale multiplied per copy
-    const R = m * 0.05;                                // gap from the center
-    const baseH = m * 0.43;                            // first copy's height
+    // Measure the pattern in units of the first copy's height, then size it to fill the free space.
+    const Rr = 0.12;                                   // gap from the center, in those units
+    let ext = 0;
+    for (let i = 0; i < n; i++) {
+      const h = Math.pow(scaleStep, i), w = h * cw / ch, c = Rr + h / 2;
+      const t = rotStep * i, cs = Math.cos(t), sn = Math.sin(t);
+      for (const [x, y] of [[-w / 2, -h / 2], [w / 2, -h / 2], [-w / 2, h / 2], [w / 2, h / 2]]) {
+        ext = Math.max(ext, Math.hypot(x * cs - y * sn, x * sn + y * cs - c));
+      }
+    }
+    const baseH = (m / 2) * 0.98 / ext;               // first copy's height
+    const R = Rr * baseH;
     const now = times[head];
 
     for (const side of [1, -1]) {      // right half, then its mirror on the left
       for (let i = 0; i < n; i++) {
         const f = buf[frameAt(now - i * delayMs)];
         const a = Math.PI * (i + 0.5) / n;   // top → bottom around the right side
-        sctx.setTransform(side, 0, 0, 1, W / 2, H / 2);
+        sctx.setTransform(side, 0, 0, 1, cx, cy);
         sctx.rotate(a);
         // wrists toward the center, fingers pointing outward
         const sh = baseH * Math.pow(scaleStep, i);   // grows (or shrinks) copy by copy
