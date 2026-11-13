@@ -110,17 +110,17 @@
 <div id="panel" hidden>
   <div class="inner">
     <div class="seg" role="group" aria-label="Background removal">
-      <button id="mBright" aria-pressed="true">Remove dark areas</button>
-      <button id="mBg" aria-pressed="false">Remove saved background</button>
+      <button id="mBright" aria-pressed="false">Remove dark areas</button>
+      <button id="mBg" aria-pressed="true">Remove saved background</button>
     </div>
-    <button id="grab" hidden>Save empty background</button>
+    <button id="grab">Save empty background</button>
     <label class="row"><span>Copies</span><input id="copies" type="range" min="2" max="8" value="4"><span id="copiesV">8</span></label>
     <label class="row"><span>Delay</span><input id="delay" type="range" min="0" max="500" step="10" value="100"><span id="delayV">100 ms</span></label>
-    <label class="row"><span>Rotate</span><input id="rotate" type="range" min="-45" max="45" value="10"><span id="rotateV">+10°</span></label>
+    <label class="row"><span>Rotate</span><input id="rotate" type="range" min="-45" max="45" value="-1"><span id="rotateV">-1°</span></label>
     <label class="row"><span>Scale</span><input id="scale" type="range" min="75" max="130" value="105"><span id="scaleV">1.05×</span></label>
     <label class="row"><span>Echoes</span><input id="echoes" type="range" min="1" max="5" value="3"><span id="echoesV">3</span></label>
-    <label class="row"><span>Echo delay</span><input id="echoDelay" type="range" min="0" max="500" step="10" value="250"><span id="echoDelayV">250 ms</span></label>
-    <label class="row"><span>Cutoff</span><input id="cutoff" type="range" min="0" max="200" value="80"><span id="cutoffV">80</span></label>
+    <label class="row"><span>Echo delay</span><input id="echoDelay" type="range" min="0" max="500" step="10" value="440"><span id="echoDelayV">440 ms</span></label>
+    <label class="row"><span>Cutoff</span><input id="cutoff" type="range" min="0" max="200" value="70"><span id="cutoffV">70</span></label>
     <p class="hint">Delay, rotate and scale add up from one copy to the next. Tap the picture to hide or show these controls.</p>
   </div>
 </div>
@@ -162,7 +162,7 @@
   let buf = [], bufCtx = [], head = 0, filled = 0;
   const times = new Float64Array(BUF);
   let lastCap = 0;
-  let mode = 'bright', bgData = null, grabNext = false;
+  let mode = 'bg', bgData = null, grabNext = false;
 
   // ---- UI ----
   const syncLabels = () => {
@@ -182,7 +182,7 @@
     ui.mBright.setAttribute('aria-pressed', m === 'bright');
     ui.mBg.setAttribute('aria-pressed', m === 'bg');
     ui.grab.hidden = m !== 'bg';
-    ui.cutoff.value = m === 'bg' ? 30 : 80;
+    ui.cutoff.value = m === 'bg' ? 70 : 80;
     syncLabels();
   };
   ui.mBright.addEventListener('click', () => setMode('bright'));
