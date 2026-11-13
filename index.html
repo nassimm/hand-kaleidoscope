@@ -82,7 +82,7 @@
     border: 0; border-radius: 9px; padding: 0.5rem; cursor: pointer;
   }
   .seg button[aria-pressed="true"] { background: rgba(203, 184, 255, 0.18); color: var(--text); }
-  .row { display: grid; grid-template-columns: 4.6rem 1fr 3.6rem; align-items: center; gap: 10px; font-size: 0.92rem; }
+  .row { display: grid; grid-template-columns: 5.4rem 1fr 3.6rem; align-items: center; gap: 10px; font-size: 0.92rem; }
   .row span:last-child { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   input[type="range"] { width: 100%; accent-color: var(--accent); }
   #grab {
@@ -118,6 +118,8 @@
     <label class="row"><span>Delay</span><input id="delay" type="range" min="0" max="500" step="10" value="100"><span id="delayV">100 ms</span></label>
     <label class="row"><span>Rotate</span><input id="rotate" type="range" min="-45" max="45" value="10"><span id="rotateV">+10°</span></label>
     <label class="row"><span>Scale</span><input id="scale" type="range" min="75" max="130" value="105"><span id="scaleV">1.05×</span></label>
+    <label class="row"><span>Echoes</span><input id="echoes" type="range" min="1" max="5" value="3"><span id="echoesV">3</span></label>
+    <label class="row"><span>Echo delay</span><input id="echoDelay" type="range" min="0" max="500" step="10" value="250"><span id="echoDelayV">250 ms</span></label>
     <label class="row"><span>Cutoff</span><input id="cutoff" type="range" min="0" max="200" value="80"><span id="cutoffV">80</span></label>
     <p class="hint">Delay, rotate and scale add up from one copy to the next. Tap the picture to hide or show these controls.</p>
   </div>
@@ -140,6 +142,10 @@
     scale: document.getElementById('scale'),
     rotateV: document.getElementById('rotateV'),
     scaleV: document.getElementById('scaleV'),
+    echoes: document.getElementById('echoes'),
+    echoDelay: document.getElementById('echoDelay'),
+    echoesV: document.getElementById('echoesV'),
+    echoDelayV: document.getElementById('echoDelayV'),
     copiesV: document.getElementById('copiesV'),
     delayV: document.getElementById('delayV'),
     cutoffV: document.getElementById('cutoffV'),
@@ -148,7 +154,7 @@
     grab: document.getElementById('grab'),
   };
 
-  const BUF = 130;           // ~4.3 s of history at 30 fps (7 copies x 500 ms + margin)
+  const BUF = 175;           // ~5.8 s of history at 30 fps (7 x 500 ms copies + 4 x 500 ms echoes + margin)
   const CAP_W = 200;         // processing width, small for speed and memory
   const FRAME_MS = 30;       // capture at most ~30 fps
   const SOFT = 1 / 40;       // edge softness of the key
@@ -165,8 +171,10 @@
     ui.cutoffV.textContent = ui.cutoff.value;
     ui.rotateV.textContent = (ui.rotate.value > 0 ? '+' : '') + ui.rotate.value + '°';
     ui.scaleV.textContent = (ui.scale.value / 100).toFixed(2) + '×';
+    ui.echoesV.textContent = ui.echoes.value;
+    ui.echoDelayV.textContent = ui.echoDelay.value + ' ms';
   };
-  ['copies', 'delay', 'cutoff', 'rotate', 'scale'].forEach(k => ui[k].addEventListener('input', syncLabels));
+  ['copies', 'delay', 'cutoff', 'rotate', 'scale', 'echoes', 'echoDelay'].forEach(k => ui[k].addEventListener('input', syncLabels));
   syncLabels();
 
   const setMode = m => {
@@ -296,9 +304,12 @@
     const R = Rr * baseH;
     const now = times[head];
 
+    const layers = +ui.echoes.value, echoMs = +ui.echoDelay.value;
+    for (let L = layers - 1; L >= 0; L--) {  // oldest echo first, live pattern on top
+    sctx.globalAlpha = Math.pow(0.65, L);   // each echo a little fainter
     for (const side of [1, -1]) {      // right half, then its mirror on the left
       for (let i = 0; i < n; i++) {
-        const f = buf[frameAt(now - i * delayMs)];
+        const f = buf[frameAt(now - L * echoMs - i * delayMs)];
         const a = Math.PI * (i + 0.5) / n;   // top → bottom around the right side
         sctx.setTransform(side, 0, 0, 1, cx, cy);
         sctx.rotate(a);
@@ -310,6 +321,8 @@
         sctx.drawImage(f, -sw / 2, -sh / 2, sw, sh);
       }
     }
+    }
+    sctx.globalAlpha = 1;
   }
 
   // newest stored frame taken at or before time t (oldest available if t is further back)
