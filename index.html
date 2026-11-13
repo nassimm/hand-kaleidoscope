@@ -161,7 +161,7 @@
   let cw = 0, ch = 0, cap, capCtx;
   let buf = [], bufCtx = [], head = 0, filled = 0;
   const times = new Float64Array(BUF);
-  let lastCap = 0;
+  let lastCap = 0, tcan, tctx;
   let mode = 'bright', bgData = null, grabNext = false;
 
   // ---- UI ----
@@ -231,6 +231,9 @@
       c.width = cw; c.height = ch;
       buf.push(c); bufCtx.push(c.getContext('2d'));
     }
+    tcan = document.createElement('canvas');   // scratch canvas for tinting
+    tcan.width = cw; tcan.height = ch;
+    tctx = tcan.getContext('2d');
     resize();
     addEventListener('resize', resize);
   }
@@ -258,13 +261,16 @@
 
     const cut = +ui.cutoff.value;
     const useBg = mode === 'bg' && bgData;
+    const gray = +ui.echoes.value > 1;   // echoes get tinted, so keep only the light and shadow
     for (let p = 0; p < d.length; p += 4) {
       const r = d[p], g = d[p + 1], b = d[p + 2];
       const v = useBg
         ? (Math.abs(r - bgData[p]) + Math.abs(g - bgData[p + 1]) + Math.abs(b - bgData[p + 2])) / 3
         : 0.299 * r + 0.587 * g + 0.114 * b;
-      const a = (v - cut) * SOFT;
-      if (a <= 0) { d[p] = d[p + 1] = d[p + 2] = 0; }
+      let a = (v - cut) * SOFT;
+      if (a <= 0) { d[p] = d[p + 1] = d[p + 2] = 0; continue; }
+      if (a > 1) a = 1;
+      if (gray) { d[p] = d[p + 1] = d[p + 2] = (0.299 * r + 0.587 * g + 0.114 * b) * a; }
       else if (a < 1) { d[p] = r * a; d[p + 1] = g * a; d[p + 2] = b * a; }
     }
 
@@ -305,8 +311,11 @@
     const now = times[head];
 
     const layers = +ui.echoes.value, echoMs = +ui.echoDelay.value;
+    const tinted = layers > 1;
+    sctx.globalCompositeOperation = tinted ? 'lighter' : 'screen';  // echoes add their colors together
+    sctx.globalAlpha = tinted ? Math.min(1, 3 / layers) : 1;          // keeps the sum from blowing out to white
     for (let L = layers - 1; L >= 0; L--) {  // oldest echo first, live pattern on top
-    sctx.globalAlpha = Math.pow(0.65, L);   // each echo a little fainter
+    const hue = 360 * L / layers;           // echoes spread evenly around the color wheel
     for (const side of [1, -1]) {      // right half, then its mirror on the left
       for (let i = 0; i < n; i++) {
         const f = buf[frameAt(now - L * echoMs - i * delayMs)];
@@ -318,11 +327,21 @@
         const sw = sh * cw / ch;
         sctx.translate(0, -R - sh / 2);
         sctx.rotate(rotStep * i);                     // spins a bit more copy by copy
-        sctx.drawImage(f, -sw / 2, -sh / 2, sw, sh);
+        sctx.drawImage(tinted ? tintFrame(f, hue) : f, -sw / 2, -sh / 2, sw, sh);
       }
     }
     }
     sctx.globalAlpha = 1;
+  }
+
+  // grayscale frame x pure hue: colored, but shadows and detail stay visible
+  function tintFrame(f, hue) {
+    tctx.globalCompositeOperation = 'copy';
+    tctx.drawImage(f, 0, 0);
+    tctx.globalCompositeOperation = 'multiply';
+    tctx.fillStyle = 'hsl(' + hue + ', 100%, 50%)';
+    tctx.fillRect(0, 0, cw, ch);
+    return tcan;
   }
 
   // newest stored frame taken at or before time t (oldest available if t is further back)
