@@ -82,7 +82,7 @@
     border: 0; border-radius: 9px; padding: 0.5rem; cursor: pointer;
   }
   .seg button[aria-pressed="true"] { background: rgba(203, 184, 255, 0.18); color: var(--text); }
-  .row { display: grid; grid-template-columns: 5.2rem 1fr 1.8rem; align-items: center; gap: 10px; font-size: 0.92rem; }
+  .row { display: grid; grid-template-columns: 4.6rem 1fr 3.6rem; align-items: center; gap: 10px; font-size: 0.92rem; }
   .row span:last-child { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
   input[type="range"] { width: 100%; accent-color: var(--accent); }
   #grab {
@@ -115,7 +115,9 @@
     </div>
     <button id="grab" hidden>Save empty background</button>
     <label class="row"><span>Copies</span><input id="copies" type="range" min="2" max="8" value="4"><span id="copiesV">8</span></label>
-    <label class="row"><span>Delay</span><input id="delay" type="range" min="0" max="8" value="3"><span id="delayV">3</span></label>
+    <label class="row"><span>Delay</span><input id="delay" type="range" min="0" max="500" step="10" value="100"><span id="delayV">100 ms</span></label>
+    <label class="row"><span>Rotate</span><input id="rotate" type="range" min="-180" max="180" value="0"><span id="rotateV">0°</span></label>
+    <label class="row"><span>Scale</span><input id="scale" type="range" min="30" max="200" value="100"><span id="scaleV">1.0×</span></label>
     <label class="row"><span>Cutoff</span><input id="cutoff" type="range" min="0" max="200" value="80"><span id="cutoffV">80</span></label>
     <p class="hint">Tap the picture to hide or show these controls.</p>
   </div>
@@ -134,6 +136,10 @@
     copies: document.getElementById('copies'),
     delay: document.getElementById('delay'),
     cutoff: document.getElementById('cutoff'),
+    rotate: document.getElementById('rotate'),
+    scale: document.getElementById('scale'),
+    rotateV: document.getElementById('rotateV'),
+    scaleV: document.getElementById('scaleV'),
     copiesV: document.getElementById('copiesV'),
     delayV: document.getElementById('delayV'),
     cutoffV: document.getElementById('cutoffV'),
@@ -142,20 +148,25 @@
     grab: document.getElementById('grab'),
   };
 
-  const BUF = 72;            // frames of history (8 copies x 8 delay + margin)
-  const CAP_W = 240;         // processing width, small for speed
+  const BUF = 130;           // ~4.3 s of history at 30 fps (7 copies x 500 ms + margin)
+  const CAP_W = 200;         // processing width, small for speed and memory
+  const FRAME_MS = 30;       // capture at most ~30 fps
   const SOFT = 1 / 40;       // edge softness of the key
   let cw = 0, ch = 0, cap, capCtx;
   let buf = [], bufCtx = [], head = 0, filled = 0;
+  const times = new Float64Array(BUF);
+  let lastCap = 0;
   let mode = 'bright', bgData = null, grabNext = false;
 
   // ---- UI ----
   const syncLabels = () => {
     ui.copiesV.textContent = ui.copies.value * 2;
-    ui.delayV.textContent = ui.delay.value;
+    ui.delayV.textContent = ui.delay.value + ' ms';
     ui.cutoffV.textContent = ui.cutoff.value;
+    ui.rotateV.textContent = ui.rotate.value + '°';
+    ui.scaleV.textContent = (ui.scale.value / 100).toFixed(1) + '×';
   };
-  ['copies', 'delay', 'cutoff'].forEach(k => ui[k].addEventListener('input', syncLabels));
+  ['copies', 'delay', 'cutoff', 'rotate', 'scale'].forEach(k => ui[k].addEventListener('input', syncLabels));
   syncLabels();
 
   const setMode = m => {
@@ -223,7 +234,7 @@
   }
 
   // ---- Per frame ----
-  function capture() {
+  function capture(now) {
     // mirror like a selfie
     capCtx.setTransform(-1, 0, 0, 1, cw, 0);
     capCtx.drawImage(video, 0, 0, cw, ch);
@@ -251,6 +262,7 @@
 
     head = (head + 1) % BUF;
     bufCtx[head].putImageData(img, 0, 0);
+    times[head] = now;
     filled = Math.min(filled + 1, BUF);
   }
 
@@ -262,27 +274,40 @@
     sctx.fillRect(0, 0, W, H);
     sctx.globalCompositeOperation = 'screen';
 
-    const n = +ui.copies.value;        // copies per side
-    const step = +ui.delay.value;      // frames between copies
-    const R = m * 0.05;                // gap from the center
-    const sh = m * 0.43;               // copy height
+    const n = +ui.copies.value;                      // copies per side
+    const delayMs = +ui.delay.value;                 // delay between copies
+    const rot = +ui.rotate.value * Math.PI / 180;    // each copy spins around its own center
+    const R = m * 0.05;                              // gap from the center
+    const sh = m * 0.43 * (+ui.scale.value / 100);   // copy height
     const sw = sh * cw / ch;
+    const now = times[head];
 
     for (const side of [1, -1]) {      // right half, then its mirror on the left
       for (let i = 0; i < n; i++) {
-        const age = Math.min(i * step, filled - 1);
-        const f = buf[((head - age) % BUF + BUF) % BUF];
+        const f = buf[frameAt(now - i * delayMs)];
         const a = Math.PI * (i + 0.5) / n;   // top → bottom around the right side
         sctx.setTransform(side, 0, 0, 1, W / 2, H / 2);
         sctx.rotate(a);
         // wrists toward the center, fingers pointing outward
-        sctx.drawImage(f, -sw / 2, -R - sh, sw, sh);
+        sctx.translate(0, -R - sh / 2);
+        sctx.rotate(rot);
+        sctx.drawImage(f, -sw / 2, -sh / 2, sw, sh);
       }
     }
   }
 
-  function loop() {
-    if (video.readyState >= 2) { capture(); draw(); }
+  // newest stored frame taken at or before time t (oldest available if t is further back)
+  function frameAt(t) {
+    let idx = head;
+    for (let k = 1; k < filled && times[idx] > t; k++) idx = (idx - 1 + BUF) % BUF;
+    return idx;
+  }
+
+  function loop(now) {
+    if (video.readyState >= 2) {
+      if (now - lastCap >= FRAME_MS) { capture(now); lastCap = now; }
+      draw();
+    }
     requestAnimationFrame(loop);
   }
 })();
